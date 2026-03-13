@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Geometry Dash: Pro Ship Edition</title>
+  <style>
+    body { margin:0; height:100vh; background:#0a0a0a; overflow:hidden; font-family:Arial,Helvetica,sans-serif; color:#fff; touch-action:none; }
+    canvas { display:block; margin:0 auto; background:linear-gradient(180deg,#001a00 0%,#000 100%); border:3px solid #0f0; border-radius:10px; box-shadow:0 0 60px rgba(0,255,0,0.3); image-rendering:pixelated; }
+    #ui { position:absolute; top:16px; left:20px; font-size:22px; font-weight:bold; color:#0ff; text-shadow:0 0 12px #0ff; pointer-events:none; user-select:none; }
+    #pauseBtn, #menuBtn { position:absolute; top:16px; right:20px; padding:10px 22px; font-size:18px; font-weight:bold; background:rgba(0,0,0,0.65); color:#0f0; border:2px solid #0f0; border-radius:8px; cursor:pointer; box-shadow:0 0 18px #0f0; z-index:10; }
+    #pauseBtn:hover, #menuBtn:hover { background:rgba(0,255,0,0.25); }
+    #menu, #levels { position:absolute; inset:0; background:rgba(0,0,0,0.88); display:flex; flex-direction:column; justify-content:flex-start; align-items:center; z-index:20; text-align:center; overflow-y:auto; padding:30px 20px 60px; }
+    #levels { display:none; }
+    #menu h1, #levels h1 { font-size:64px; margin:0 0 24px; text-shadow:0 0 24px #0f0; }
+    .btn-group { margin:20px 0; display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+    .mode-btn, .speed-btn, .skin-btn, .icon-btn, .diff-btn { padding:12px 32px; font-size:20px; background:#1e1e1e; border:2px solid #555; color:#ddd; border-radius:10px; cursor:pointer; transition:all 0.15s; }
+    .mode-btn.active, .speed-btn.active, .skin-btn.active, .icon-btn.active, .diff-btn.active { background:#0f0; color:#000; border-color:#0f0; box-shadow:0 0 20px #0f0; }
+    .icon-btn.locked { opacity:0.45; cursor:not-allowed; }
+    button.big { padding:20px 80px; font-size:36px; margin:40px 20px 20px; background:#0f0; color:#000; border:none; border-radius:14px; cursor:pointer; box-shadow:0 0 40px #0f0; transition:all 0.2s; }
+    button.big:hover { background:#0f0dd; transform:scale(1.05); }
+  </style>
+</head>
+<body>
+<canvas id="c" width="960" height="540"></canvas>
+<div id="ui">DISTANCE: 0 m</div>
+<button id="pauseBtn" style="display:none">PAUSE</button>
+<button id="menuBtn" style="display:none">MENU</button>
+
+<!-- MAIN MENU -->
+<div id="menu">
+  <h1>PRO SHIP EDITION</h1>
+  <div>High Score: <span id="hs">0 m</span></div>
+  <h2 style="margin:35px 0 12px">MODE</h2>
+  <div class="btn-group">
+    <button class="mode-btn active" data-mode="ship">SHIP</button>
+    <button class="mode-btn" data-mode="wave">WAVE</button>
+    <button class="mode-btn" data-mode="ufo">UFO</button>
+  </div>
+  <h2 style="margin:30px 0 12px">SPEED</h2>
+  <div class="btn-group">
+    <button class="speed-btn active" data-speed="1">1×</button>
+    <button class="speed-btn" data-speed="2">2×</button>
+    <button class="speed-btn" data-speed="3">3×</button>
+    <button class="speed-btn" data-speed="4">4×</button>
+  </div>
+  <h2 style="margin:30px 0 12px">SKIN</h2>
+  <div class="btn-group">
+    <button class="skin-btn active" data-skin="0">DEFAULT</button>
+    <button class="skin-btn" data-skin="1">NEON</button>
+    <button class="skin-btn" data-skin="2">GOLD</button>
+    <button class="skin-btn" data-skin="3">ICE</button>
+  </div>
+  <h2 style="margin:30px 0 12px">CHANGE ICON</h2>
+  <div class="btn-group" id="iconGroup">
+    <button class="icon-btn active" data-icon="0">BASIC</button>
+    <button class="icon-btn" data-icon="1">SPIKY</button>
+    <button class="icon-btn" data-icon="2">BOOSTER</button>
+    <button class="icon-btn" data-icon="3">LEGEND</button>
+    <button class="icon-btn locked" data-icon="4">MYSTIC</button>
+  </div>
+  <button class="big" id="levelsBtn">LEVELS</button>
+  <button class="big" id="playBtn">PLAY</button>
+</div>
+
+<!-- LEVELS SCREEN -->
+<div id="levels">
+  <h1>SELECT DIFFICULTY</h1>
+  <div class="btn-group">
+    <button class="diff-btn" data-diff="1">EASY</button>
+    <button class="diff-btn active" data-diff="2">MEDIUM</button>
+    <button class="diff-btn" data-diff="3">HARD</button>
+  </div>
+  <button class="big" id="playFromLevels">PLAY SELECTED LEVEL</button>
+  <button class="big" id="backBtn" style="background:#555; margin-top:20px;">BACK TO MENU</button>
+</div>
+
+<script>
+// ────────────────────────────────────────────────────────
+// CONFIG & STATE
+// ────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const ui = document.getElementById('ui');
+const pauseBtn = document.getElementById('pauseBtn');
+const menuBtn = document.getElementById('menuBtn');
+const menu = document.getElementById('menu');
+const levelsScreen = document.getElementById('levels');
+const hsSpan = document.getElementById('hs');
+const playBtn = document.getElementById('playBtn');
+const levelsBtn = document.getElementById('levelsBtn');
+const playFromLevels = document.getElementById('playFromLevels');
+const backBtn = document.getElementById('backBtn');
+
+const CONFIG = {
+  baseSpeed: 7.4, gravity: 0.52, thrust: -1.18, fallResist: 0.978,
+  maxFallSpeed: 11.2, rotationSpeed: 0.22, waveSpeed: 8.4,
+  trailInterval: 3, trailFade: 0.05, particleLife: 0.8,
+  playerHitW: 26, playerHitH: 16, playerHitOffsetX: 11, playerHitOffsetY: 8,
+  obstacleHitInset: 12,
+};
+
+const SKINS = [
+  {name:'DEFAULT', shipColor:'#adff2f', ufoColor:'#00ffff'},
+  {name:'NEON',    shipColor:'#ff00ff', ufoColor:'#00ffaa'},
+  {name:'GOLD',    shipColor:'#ffd700', ufoColor:'#ffff00'},
+  {name:'ICE',     shipColor:'#00f0ff', ufoColor:'#a0ffff'}
+];
+
+const ICONS = [
+  {id:0, name:"BASIC",   unlock:0},
+  {id:1, name:"SPIKY",   unlock:250},
+  {id:2, name:"BOOSTER", unlock:800},
+  {id:3, name:"LEGEND",  unlock:2000},
+  {id:4, name:"MYSTIC",  unlock:1000}
+];
+
+let state = {
+  mode: "ship",
+  speedMultiplier: 1,
+  difficulty: 2,           // 1=Easy, 2=Medium, 3=Hard
+  gameSpeed: CONFIG.baseSpeed,
+  skin: 0,
+  icon: parseInt(localStorage.getItem('gdProShipIcon') || '0'),
+  player: { x:180, y:270, w:48, h:32, dy:0, rot:0, gravDir:1, trail:[] },
+  obstacles: [], portals: [], particles: [],
+  holding: false, prevHolding: false,
+  score: 0, frame: 0,
+  highScore: parseInt(localStorage.getItem('gdProShipHS') || '0'),
+  gameOver: false, paused: false, inMenu: true,
+};
+hsSpan.textContent = `${state.highScore} m`;
+
+// ────────────────────────────────────────────────────────
+// HELPERS (lag-optimized)
+// ────────────────────────────────────────────────────────
+function burstParticles(x, y, color = '#ff4444', count = 8) {
+  for (let i = 0; i < Math.min(count, 8); i++) {
+    state.particles.push({x, y, dx:(Math.random()-0.5)*9, dy:(Math.random()-0.5)*9, life:CONFIG.particleLife, col:color});
+  }
+}
+function updateParticles() {
+  for (let i = state.particles.length-1; i>=0; i--) {
+    const p = state.particles[i];
+    p.x += p.dx; p.y += p.dy; p.life -= 0.05;
+    if (p.life <= 0) state.particles.splice(i,1);
+  }
+  if (state.particles.length > 60) state.particles.length = 60;
+}
+function drawParticles() {
+  state.particles.forEach(p => {
+    ctx.globalAlpha = p.life * 1.3;
+    ctx.fillStyle = p.col;
+    ctx.fillRect(p.x-3, p.y-3, 6, 6);
+  });
+  ctx.globalAlpha = 1;
+}
+
+// ────────────────────────────────────────────────────────
+// SPAWN – DIFFICULTY AFFECTS EVERYTHING
+// ────────────────────────────────────────────────────────
+function spawnObstacle() {
+  const dist = Math.floor(state.score / 10);
+
+  let baseFreq = 34, baseGap = 208, baseBlock = 0.78;
+  if (state.difficulty === 1) {      // EASY
+    baseFreq = 48; baseGap = 270; baseBlock = 0.40;
+  } else if (state.difficulty === 3) { // HARD
+    baseFreq = 22; baseGap = 165; baseBlock = 0.98;
+  }
+
+  const freq = Math.max(15, baseFreq - Math.floor(dist / 90) * 2);
+  const gap = baseGap - Math.min(120, Math.floor(dist / 80) * 5);
+
+  if (state.frame % freq !== 0) return;
+
+  const offset = Math.random() * 38 - 19;
+  const h1 = (540 - gap) / 2 + offset + Math.random() * 26 - 13;
+  const h2 = 540 - gap - h1;
+
+  state.obstacles.push({ x: canvas.width + 50, y: 0, w: 48, h: h1, type: 'ceiling' });
+  state.obstacles.push({ x: canvas.width + 50, y: 540 - h2, w: 48, h: h2, type: 'floor' });
+
+  const blockChance = baseBlock + dist / 12000;
+  if (Math.random() < blockChance) {
+    const my = 110 + Math.random() * (540 - 220);
+    state.obstacles.push({ x: canvas.width + 130 + Math.random() * 70, y: my - 24, w: 38, h: 48, type: 'block' });
+  }
+  if (Math.random() < (state.difficulty === 3 ? 0.55 : 0.35)) {
+    const my2 = 140 + Math.random() * (540 - 280);
+    state.obstacles.push({ x: canvas.width + 190 + Math.random() * 50, y: my2 - 24, w: 38, h: 48, type: 'block' });
+  }
+}
+function spawnPortal() {
+  if (state.frame % 360 === 0 && state.frame > 350) {
+    state.portals.push({x: canvas.width + 190 + Math.random() * 130, y: 120 + Math.random() * 300, w:56, h:110, used:false});
+  }
+}
+
+// ────────────────────────────────────────────────────────
+// INPUT + MENU + LEVELS
+// ────────────────────────────────────────────────────────
+function setHolding(v) { if (state.gameOver || state.paused || state.inMenu) return; state.holding = v; }
+
+window.addEventListener('keydown', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+    e.preventDefault();
+    if (state.gameOver || state.inMenu) startGame();
+    else setHolding(true);
+  }
+  if (e.code === 'KeyP' && !state.gameOver && !state.inMenu) {
+    state.paused = !state.paused;
+    pauseBtn.textContent = state.paused ? 'RESUME' : 'PAUSE';
+  }
+});
+window.addEventListener('keyup', e => {
+  if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') setHolding(false);
+});
+
+canvas.addEventListener('pointerdown', e => { e.preventDefault(); setHolding(true); });
+canvas.addEventListener('pointerup', () => setHolding(false));
+canvas.addEventListener('pointerleave', () => setHolding(false));
+
+pauseBtn.onclick = () => { if (state.inMenu) return; state.paused = !state.paused; pauseBtn.textContent = state.paused ? 'RESUME' : 'PAUSE'; };
+menuBtn.onclick = () => { 
+  state.inMenu = true; state.paused = true; 
+  menu.style.display = 'flex'; levelsScreen.style.display = 'none';
+  pauseBtn.style.display = 'none'; menuBtn.style.display = 'none';
+  refreshIconButtons();
+};
+playBtn.onclick = startGame;
+levelsBtn.onclick = () => { menu.style.display = 'none'; levelsScreen.style.display = 'flex'; };
+backBtn.onclick = () => { levelsScreen.style.display = 'none'; menu.style.display = 'flex'; };
+playFromLevels.onclick = startGame;
+
+document.querySelectorAll('.mode-btn, .speed-btn').forEach(btn => {
+  btn.onclick = () => {
+    const group = btn.classList.contains('mode-btn') ? '.mode-btn' : '.speed-btn';
+    document.querySelectorAll(group).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    if (btn.classList.contains('mode-btn')) state.mode = btn.dataset.mode;
+    else state.speedMultiplier = +btn.dataset.speed;
+  };
+});
+document.querySelectorAll('.skin-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('.skin-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.skin = +btn.dataset.skin;
+  };
+});
+document.querySelectorAll('#levels .diff-btn').forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll('#levels .diff-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.difficulty = +btn.dataset.diff;
+  };
+});
+
+function refreshIconButtons() {
+  document.querySelectorAll('.icon-btn').forEach(btn => {
+    const idx = +btn.dataset.icon;
+    const req = ICONS[idx].unlock;
+    if (state.highScore >= req) {
+      btn.disabled = false;
+      btn.classList.remove('locked');
+      btn.classList.toggle('active', idx === state.icon);
+    } else {
+      btn.disabled = true;
+      btn.classList.add('locked');
+    }
+  });
+}
+document.querySelectorAll('.icon-btn').forEach(btn => {
+  btn.onclick = () => {
+    const idx = +btn.dataset.icon;
+    if (btn.disabled) return;
+    document.querySelectorAll('.icon-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    state.icon = idx;
+    localStorage.setItem('gdProShipIcon', idx);
+  };
+});
+
+function startGame() {
+  state.inMenu = false; state.paused = false; state.gameOver = false;
+  menu.style.display = 'none';
+  levelsScreen.style.display = 'none';
+  pauseBtn.style.display = 'block';
+  menuBtn.style.display = 'block';
+  restart();
+}
+function restart() {
+  state.player = { x:180, y:270, w:48, h:32, dy:0, rot:0, gravDir:1, trail:[] };
+  state.obstacles = []; state.portals = []; state.particles = [];
+  state.score = 0; state.frame = 0; state.gameOver = false; state.paused = false;
+  state.prevHolding = false;
+  state.gameSpeed = CONFIG.baseSpeed * state.speedMultiplier;
+}
+
+// ────────────────────────────────────────────────────────
+// PHYSICS (lag-optimized)
+// ────────────────────────────────────────────────────────
+function updatePhysics() {
+  const p = state.player;
+  if (state.mode === 'ship') {
+    const accel = state.holding ? CONFIG.thrust : 0;
+    p.dy += (CONFIG.gravity * p.gravDir) + (accel * p.gravDir);
+    p.dy *= CONFIG.fallResist;
+    p.dy = Math.max(-CONFIG.maxFallSpeed, Math.min(CONFIG.maxFallSpeed, p.dy));
+    p.y += p.dy;
+    const targetRot = p.dy * 5.2 * p.gravDir;
+    p.rot += (targetRot - p.rot) * CONFIG.rotationSpeed;
+  }
+  else if (state.mode === 'wave') {
+    const waveSpeed = CONFIG.waveSpeed * state.speedMultiplier * 0.95;
+    const dir = p.gravDir;
+    const targetDy = state.holding ? -waveSpeed * dir : waveSpeed * dir;
+    p.dy = targetDy;
+    p.y += p.dy;
+    const targetRot = (state.holding ? -42 : 42) * dir;
+    p.rot += (targetRot - p.rot) * 0.28;
+  }
+  else if (state.mode === 'ufo') {
+    const dir = p.gravDir;
+    const gravForce = 0.48 * dir;
+    p.dy += gravForce;
+    p.dy *= 0.94;
+    if (state.holding && !state.prevHolding) p.dy = -4.35 * dir;
+    const targetRot = p.dy * 3.5 * dir;
+    p.rot += (targetRot - p.rot) * 0.18;
+  }
+  if (state.frame % CONFIG.trailInterval === 0) {
+    p.trail.push({ x: p.x + p.w / 2, y: p.y + p.h / 2, op: 0.88 });
+  }
+  p.trail.forEach(t => { t.x -= state.gameSpeed * 1.18; t.op -= CONFIG.trailFade; });
+  p.trail = p.trail.filter(t => t.op > 0.04);
+  if (p.trail.length > 30) p.trail.length = 30;
+  state.prevHolding = state.holding;
+}
+
+function getPlayerHitbox() {
+  const p = state.player;
+  return { x: p.x + CONFIG.playerHitOffsetX, y: p.y + CONFIG.playerHitOffsetY, w: CONFIG.playerHitW, h: CONFIG.playerHitH };
+}
+
+function updateGame() {
+  if (state.gameOver || state.paused || state.inMenu) return;
+  state.frame++;
+  state.score += 1 + (state.score / 7000);
+  state.gameSpeed = CONFIG.baseSpeed * state.speedMultiplier;
+  updatePhysics();
+
+  const ph = getPlayerHitbox();
+  if (ph.y < -10 || ph.y + ph.h > canvas.height + 10) {
+    state.gameOver = true;
+    burstParticles(state.player.x + 24, state.player.y + 16, '#ff1744', 8);
+  }
+
+  for (let i = state.obstacles.length - 1; i >= 0; i--) {
+    const o = state.obstacles[i];
+    o.x -= state.gameSpeed;
+    if (o.x < -110) { state.obstacles.splice(i, 1); continue; }
+    let ox = o.x + CONFIG.obstacleHitInset;
+    let oy = o.y + CONFIG.obstacleHitInset;
+    let ow = o.w - CONFIG.obstacleHitInset * 2;
+    let oh = o.h - CONFIG.obstacleHitInset * 2;
+    if (o.type === 'ceiling') { oy += CONFIG.obstacleHitInset * 1.2; oh -= CONFIG.obstacleHitInset * 1.2; }
+    else if (o.type === 'floor') { oy -= CONFIG.obstacleHitInset * 0.6; oh += CONFIG.obstacleHitInset * 0.6; }
+    if (ph.x + ph.w > ox && ph.x < ox + ow && ph.y + ph.h > oy && ph.y < oy + oh) {
+      state.gameOver = true;
+      burstParticles(state.player.x + 24, state.player.y + 16, '#ff1744', 8);
+    }
+  }
+
+  for (let i = state.portals.length - 1; i >= 0; i--) {
+    const p = state.portals[i];
+    p.x -= state.gameSpeed;
+    if (p.x < -160) { state.portals.splice(i, 1); continue; }
+    if (!p.used && ph.x + ph.w > p.x && ph.x < p.x + p.w && ph.y + ph.h > p.y && ph.y < p.y + p.h) {
+      state.player.gravDir *= -1;
+      p.used = true;
+      burstParticles(p.x + 28, p.y + 55, '#e040fb', 6);
+    }
+  }
+
+  spawnObstacle();
+  spawnPortal();
+}
+
+// ────────────────────────────────────────────────────────
+// RENDER (lag-optimized – no shadowBlur)
+// ────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // grid
+  ctx.strokeStyle = 'rgba(0,230,230,0.05)';
+  const gridOff = (state.frame * 1.35) % 60;
+  for (let i = -2; i < 20; i++) {
+    ctx.beginPath();
+    ctx.moveTo(i * 60 - gridOff, 0);
+    ctx.lineTo(i * 60 - gridOff + 140, canvas.height);
+    ctx.stroke();
+  }
+
+  // trail
+  const skin = SKINS[state.skin];
+  const trailColor = state.mode === 'wave' ? '#ff00aa' : (state.mode === 'ufo' ? skin.ufoColor : skin.shipColor);
+  state.player.trail.forEach(t => {
+    ctx.globalAlpha = t.op * 1.3;
+    ctx.fillStyle = trailColor;
+    ctx.fillRect(t.x - 3.5, t.y - 3.5, 7, 7);
+  });
+  ctx.globalAlpha = 1;
+
+  // player
+  ctx.save();
+  ctx.translate(state.player.x + state.player.w / 2, state.player.y + state.player.h / 2);
+  ctx.rotate(state.player.rot * Math.PI / 180);
+  if (state.player.gravDir === -1) ctx.scale(1, -1);
+
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 3;
+
+  if (state.mode === 'wave') {
+    ctx.fillStyle = skin.shipColor;
+    ctx.beginPath();
+    ctx.moveTo(-24, -18);
+    ctx.quadraticCurveTo(32, 0, -24, 18);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+  } else if (state.mode === 'ufo') {
+    ctx.fillStyle = skin.ufoColor;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 24, 12, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#a0ffff';
+    ctx.beginPath();
+    ctx.arc(0, -6, 13, Math.PI, 0, false);
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(-12, 8); ctx.lineTo(-18, 14);
+    ctx.moveTo(12, 8); ctx.lineTo(18, 14);
+    ctx.stroke();
+  } else {
+    ctx.fillStyle = skin.shipColor;
+    if (state.icon === 4) {
+      ctx.beginPath();
+      ctx.moveTo(28, 0);
+      ctx.lineTo(0, -22);
+      ctx.lineTo(-12, -10);
+      ctx.lineTo(10, 0);
+      ctx.lineTo(-12, 10);
+      ctx.lineTo(0, 22);
+      ctx.closePath();
+      ctx.moveTo(-18, -14);
+      ctx.quadraticCurveTo(-36, -26, -42, -6);
+      ctx.quadraticCurveTo(-30, 0, -20, 12);
+      ctx.quadraticCurveTo(-36, 22, -42, 6);
+      ctx.quadraticCurveTo(-30, 0, -18, -14);
+      ctx.moveTo(-14, -19);
+      ctx.lineTo(16, 19);
+      ctx.moveTo(-14, 19);
+      ctx.lineTo(16, -19);
+      ctx.fill();
+      ctx.stroke();
+    } else if (state.icon === 1) {
+      ctx.beginPath();
+      ctx.moveTo(-24, -12);
+      ctx.lineTo(28, 0);
+      ctx.lineTo(-24, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.strokeStyle = '#ffff00';
+      ctx.lineWidth = 2.8;
+      ctx.beginPath();
+      ctx.moveTo(12, -16); ctx.lineTo(29, -29);
+      ctx.moveTo(12, 16); ctx.lineTo(29, 29);
+      ctx.stroke();
+    } else if (state.icon === 2) {
+      ctx.beginPath();
+      ctx.moveTo(-24, -12);
+      ctx.lineTo(28, 0);
+      ctx.lineTo(-24, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ff8800';
+      ctx.fillRect(-30, -8, 7, 16);
+    } else if (state.icon === 3) {
+      ctx.beginPath();
+      ctx.moveTo(-24, -12);
+      ctx.lineTo(28, 0);
+      ctx.lineTo(-24, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffff00';
+      ctx.beginPath();
+      ctx.moveTo(25, -7); ctx.lineTo(30, 0); ctx.lineTo(25, 7); ctx.lineTo(20, 0);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(-24, -12);
+      ctx.lineTo(28, 0);
+      ctx.lineTo(-24, 12);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+
+  if (state.holding) {
+    const fs = state.mode === 'ufo' ? 18 + Math.random()*8 : 21 + Math.random()*11;
+    ctx.fillStyle = state.mode === 'ufo' ? '#00ddff' : '#ff5722';
+    ctx.beginPath();
+    ctx.moveTo(-27, -8);
+    ctx.lineTo(-27 - fs, 0);
+    ctx.lineTo(-27, 8);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // obstacles (no shadowBlur = smooth)
+  ctx.fillStyle = '#ffffff';
+  state.obstacles.forEach(o => {
+    if (o.type === 'block') {
+      ctx.fillRect(o.x, o.y, o.w, o.h);
+    } else {
+      ctx.beginPath();
+      if (o.type === 'ceiling') {
+        ctx.moveTo(o.x, 0);
+        ctx.lineTo(o.x + o.w / 2, o.h);
+        ctx.lineTo(o.x + o.w, 0);
+      } else {
+        ctx.moveTo(o.x, canvas.height);
+        ctx.lineTo(o.x + o.w / 2, canvas.height - o.h);
+        ctx.lineTo(o.x + o.w, canvas.height);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+  });
+
+  // portals
+  state.portals.forEach(p => {
+    ctx.strokeStyle = p.used ? '#555' : '#e040fb';
+    ctx.lineWidth = 6;
+    ctx.strokeRect(p.x, p.y, p.w, p.h);
+    if (!p.used) {
+      ctx.fillStyle = 'rgba(240,0,255,0.14)';
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+    }
+  });
+
+  drawParticles();
+
+  ui.textContent = `DISTANCE: ${Math.floor(state.score / 10)} m ${state.mode.toUpperCase()} ${state.speedMultiplier > 1 ? state.speedMultiplier + '×' : ''} ${SKINS[state.skin].name} ${ICONS[state.icon].name} ${['','EASY','MEDIUM','HARD'][state.difficulty]}`;
+
+  if (state.gameOver) {
+    ctx.fillStyle = 'rgba(0,0,0,0.78)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.shadowBlur = 35; ctx.shadowColor = '#f00';
+    ctx.font = 'bold 88px Arial'; ctx.fillText('CRASHED', canvas.width/2, canvas.height/2 - 70);
+    ctx.font = 'bold 42px Arial'; ctx.fillText(`DISTANCE: ${Math.floor(state.score / 10)} m`, canvas.width/2, canvas.height/2 + 15);
+    ctx.shadowBlur = 0; ctx.fillStyle = '#ccc'; ctx.font = '28px Arial';
+    ctx.fillText('CLICK / SPACE / W to TRY AGAIN', canvas.width/2, canvas.height/2 + 145);
+    if (state.score / 10 > state.highScore) {
+      state.highScore = Math.floor(state.score / 10);
+      localStorage.setItem('gdProShipHS', state.highScore);
+      hsSpan.textContent = `${state.highScore} m`;
+      refreshIconButtons();
+    }
+  }
+
+  if (state.paused && !state.inMenu) {
+    ctx.fillStyle = 'rgba(0,0,0,0.72)'; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#0f0'; ctx.font = 'bold 100px Arial'; ctx.textAlign = 'center';
+    ctx.shadowBlur = 45; ctx.shadowColor = '#0f0';
+    ctx.fillText('PAUSED', canvas.width/2, canvas.height/2);
+    ctx.shadowBlur = 0;
+  }
+
+  updateGame();
+  requestAnimationFrame(draw);
+}
+
+refreshIconButtons();
+draw();
+</script>
+</body>
+</html>
